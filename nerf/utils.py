@@ -391,13 +391,12 @@ class Trainer(object):
 
         # regularizations
         if self.opt.lambda_opacity > 0:
-            loss_opacity = (outputs['weights'] ** 2).mean()
+            loss_opacity = (outputs['weights_sum'] ** 2).mean()
             loss = loss + self.opt.lambda_opacity * loss_opacity
 
         if self.opt.lambda_entropy > 0:
-            alphas = outputs['weights'].clamp(1e-5, 1 - 1e-5)
-            # max at 0.37, 0 at 0 or 1
-            # alphas = alphas ** 2 # shifts max to 0.6
+            alphas = outputs['weights_sum'].clamp(1e-5, 1 - 1e-5)
+            # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
             loss_entropy = (- alphas * torch.log2(alphas) - (1 - alphas) * torch.log2(1 - alphas)).mean()
                     
             loss = loss + self.opt.lambda_entropy * loss_entropy
@@ -410,7 +409,7 @@ class Trainer(object):
     
     def post_train_step(self):
 
-        if self.opt.backbone == 'grid':
+        if self.opt.backbone == 'grid' and self.opt.lambda_tv > 0:
 
             lambda_tv = min(1.0, self.global_step / 1000) * self.opt.lambda_tv
             # unscale grad before modifying it!
@@ -746,7 +745,7 @@ class Trainer(object):
         for data in loader:
             
             # update grid every 16 steps
-            if self.model.cuda_ray and self.global_step % self.opt.update_extra_interval == 0:
+            if (self.model.cuda_ray or self.model.taichi_ray) and self.global_step % self.opt.update_extra_interval == 0:
                 with torch.cuda.amp.autocast(enabled=self.fp16):
                     self.model.update_extra_state()
                     

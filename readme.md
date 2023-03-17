@@ -6,6 +6,8 @@ The original paper's project page: [_DreamFusion: Text-to-3D using 2D Diffusion_
 
 **NEWS (2023.1.30)**: Generation quality is better with many improvements proposed by [Magic3D](https://deepimagination.cc/Magic3D/)!
 
+**NEWS (2023.3.12)**: A [Taichi](https://github.com/taichi-dev/taichi) backend is available for Instant-NGP. **No CUDA** build is requied while it achieves comparable performance!
+
 https://user-images.githubusercontent.com/25863658/215996308-9fd959f5-b5c7-4a8e-a241-0fe63ec86a4a.mp4
 
 Colab notebooks: 
@@ -58,6 +60,12 @@ bash scripts/install_ext.sh
 pip install ./raymarching # install to python path (you still need the raymarching/ folder, since this only installs the built extension.)
 ```
 
+### Taichi backend (optional)
+Use [Taichi](https://github.com/taichi-dev/taichi) backend for Instant-NGP. It achieves comparable performance to CUDA implementation while **No CUDA** build is required. Install Taichi with pip: 
+```bash
+pip install taichi
+```
+
 ### Tested environments
 * Ubuntu 22 with torch 1.12 & CUDA 11.6 on a V100.
 
@@ -72,7 +80,7 @@ First time running will take some time to compile the CUDA extensions.
 ### Instant-NGP NeRF Backbone 
 # + faster rendering speed
 # + less GPU memory (~16G)
-# - need to build CUDA extensions
+# - need to build CUDA extensions (a CUDA-free Taichi backend is available)
 # - worse surface quality
 
 ## train with text prompt (with the default settings)
@@ -81,6 +89,9 @@ First time running will take some time to compile the CUDA extensions.
 # `--fp16` enables half-precision training.
 # `--dir_text` enables view-dependent prompting.
 python main.py --text "a hamburger" --workspace trial -O
+
+# use CUDA-free Taichi backend with `--backbone grid_taichi`
+python3 main.py --text "a hamburger" --workspace trial -O --backbone grid_taichi
 
 # choose stable-diffusion version (support 1.5, 2.0 and 2.1, default is 2.1 now)
 python main.py --text "a hamburger" --workspace trial -O --sd_version 1.5
@@ -156,14 +167,15 @@ class SpecifyGradient(torch.autograd.Function):
     @custom_fwd
     def forward(ctx, input_tensor, gt_grad):
         ctx.save_for_backward(gt_grad) 
-        return torch.zeros([1], device=input_tensor.device, dtype=input_tensor.dtype) # dummy loss
+        # we return a dummy value 1, which will be scaled by amp's scaler so we get the scale in backward.
+        return torch.ones([1], device=input_tensor.device, dtype=input_tensor.dtype) 
 
     @staticmethod
     @custom_bwd
-    def backward(ctx, grad):
+    def backward(ctx, grad_scale):
         gt_grad, = ctx.saved_tensors
-        batch_size = len(gt_grad)
-        return gt_grad / batch_size, None
+        gt_grad = gt_grad * grad_scale
+        return gt_grad, None
 
 loss = SpecifyGradient.apply(latents, grad)
 return loss # functional loss      
