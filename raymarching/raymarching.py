@@ -261,13 +261,14 @@ march_rays_train = _march_rays_train.apply
 class _composite_rays_train(Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, sigmas, rgbs, ts, rays, T_thresh=1e-4):
+    def forward(ctx, sigmas, rgbs, ts, rays, T_thresh=1e-4, normals=None):
         ''' composite rays' rgbs, according to the ray marching formula.
         Args:
             rgbs: float, [M, 3]
             sigmas: float, [M,]
             ts: float, [M, 2]
             rays: int32, [N, 3]
+            normals: int32, [M, 3]
         Returns:
             weights: float, [M]
             weights_sum: float, [N,], the alpha channel
@@ -285,6 +286,14 @@ class _composite_rays_train(Function):
         weights_sum = torch.empty(N, dtype=sigmas.dtype, device=sigmas.device)
 
         depth = torch.empty(N, dtype=sigmas.dtype, device=sigmas.device)
+
+        if normals is not None:
+            image = torch.empty(N, 6, dtype=sigmas.dtype, device=sigmas.device)
+            normals = normals.float().contiguous()
+            rgbs = torch.cat((rgbs, (normals+1)/2), dim=-1)
+            get_backend().composite_rays_train_forward(sigmas, rgbs, ts, rays, M, N, T_thresh, weights, weights_sum, depth, image)
+            return weights, weights_sum, depth, image
+
         image = torch.empty(N, 3, dtype=sigmas.dtype, device=sigmas.device)
 
         get_backend().composite_rays_train_forward(sigmas, rgbs, ts, rays, M, N, T_thresh, weights, weights_sum, depth, image)
@@ -296,12 +305,13 @@ class _composite_rays_train(Function):
     
     @staticmethod
     @custom_bwd
-    def backward(ctx, grad_weights, grad_weights_sum, grad_depth, grad_image):
+    def backward(ctx, grad_weights, grad_weights_sum, grad_depth, grad_image, grad_normal):
         
         grad_weights = grad_weights.contiguous()
         grad_weights_sum = grad_weights_sum.contiguous()
         grad_depth = grad_depth.contiguous()
         grad_image = grad_image.contiguous()
+        grad_normal = grad_normal.contiguous()
 
         sigmas, rgbs, ts, rays, weights_sum, depth, image = ctx.saved_tensors
         M, N, T_thresh = ctx.dims

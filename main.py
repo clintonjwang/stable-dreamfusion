@@ -6,13 +6,16 @@ from nerf.provider import NeRFDataset
 from nerf.utils import *
 
 from nerf.gui import NeRFGUI
+import os
+sys.path.extend(os.path.expandvars('$NFS/code/stable-dreamfusion/src/controlnet'))
+sys.path.extend(os.path.expandvars('$NFS/code/stable-dreamfusion/src/controlnet/ldm'))
 
 # torch.autograd.set_detect_anomaly(True)
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--text', default=None, help="text prompt")
+    parser.add_argument('--text', default='a hamburger', help="text prompt")
     parser.add_argument('--negative', default='', type=str, help="negative text prompt")
     parser.add_argument('-O', action='store_true', help="equals --fp16 --cuda_ray --dir_text")
     parser.add_argument('-O2', action='store_true', help="equals --backbone vanilla --dir_text")
@@ -72,7 +75,7 @@ if __name__ == '__main__':
     ### regularizations
     parser.add_argument('--lambda_entropy', type=float, default=1e-4, help="loss scale for alpha entropy")
     parser.add_argument('--lambda_opacity', type=float, default=0, help="loss scale for alpha value")
-    parser.add_argument('--lambda_orient', type=float, default=1e-2, help="loss scale for orientation")
+    parser.add_argument('--lambda_orient', type=float, default=1e-3, help="loss scale for orientation")
     parser.add_argument('--lambda_tv', type=float, default=1e-7, help="loss scale for total variation")
 
     ### GUI options
@@ -138,7 +141,6 @@ if __name__ == '__main__':
                 trainer.save_mesh()
     
     else:
-        
         train_loader = NeRFDataset(opt, device=device, type='train', H=opt.h, W=opt.w, size=100).dataloader()
 
         if opt.optim == 'adan':

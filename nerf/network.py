@@ -1,3 +1,4 @@
+import pdb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -167,16 +168,22 @@ class NeRFNetwork(NeRFRenderer):
 
         return normal
         
-    def forward(self, x, d, l=None, ratio=1, shading='albedo'):
+    def forward(self, x, d, l=None, ratio=1, shading='albedo', return_normals=True):
         # x: [N, 3], in [-bound, bound]
         # d: [N, 3], view direction, nomalized in [-1, 1]
         # l: [3], plane light direction, nomalized in [-1, 1]
         # ratio: scalar, ambient ratio, 1 == no shading (albedo only), 0 == only shading (textureless)
-
         if shading == 'albedo':
-            # no need to query normal
-            sigma, color = self.common_forward(x)
-            normal = None
+            if return_normals:
+                with torch.enable_grad():
+                    x.requires_grad_(True)
+                    sigma, color = self.common_forward(x)
+                    normal = - torch.autograd.grad(torch.sum(sigma), x, create_graph=True)[0] # [N, 3]
+                normal = safe_normalize(normal)
+            else:
+                # no need to query normal
+                sigma, color = self.common_forward(x)
+                normal = None
         
         else:
             # query normal

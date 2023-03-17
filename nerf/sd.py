@@ -1,6 +1,6 @@
+import pdb
 from transformers import CLIPTextModel, CLIPTokenizer, logging
 from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler, DDIMScheduler
-from diffusers.utils.import_utils import is_xformers_available
 
 # suppress partial model loading warning
 logging.set_verbosity_error()
@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd 
+from . import cnet
 
 class SpecifyGradient(torch.autograd.Function):
     @staticmethod
@@ -44,7 +45,7 @@ class StableDiffusion(nn.Module):
             print(f'[INFO] using hugging face custom model key: {hf_key}')
             model_key = hf_key
         elif self.sd_version == '2.1':
-            model_key = "stabilityai/stable-diffusion-2-1-base"
+            model_key = "stabilityai/stable-diffusion-2-1" #-base
         elif self.sd_version == '2.0':
             model_key = "stabilityai/stable-diffusion-2-base"
         elif self.sd_version == '1.5':
@@ -57,9 +58,10 @@ class StableDiffusion(nn.Module):
         self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer")
         self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder").to(self.device)
         self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
-
-        if is_xformers_available():
+        try:
             self.unet.enable_xformers_memory_efficient_attention()
+        except RuntimeError:
+            print('[INFO] xformers not working, using default attention.')
         
         self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler")
         # self.scheduler = PNDMScheduler.from_pretrained(model_key, subfolder="scheduler")
@@ -91,11 +93,12 @@ class StableDiffusion(nn.Module):
         return text_embeddings
 
 
-    def train_step(self, text_embeddings, pred_rgb, guidance_scale=100):
-        
+    def train_step(self, text_embeddings, pred_rgb, pred_depth, pred_normals, guidance_scale=100):
         # interp to 512x512 to be fed into vae.
-
         pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
+        cnet.controlnet(self, 'a hamburger', mode='depth', target_map=pred_depth, input_image=pred_rgb)
+        # cnet.controlnet(pred_rgb_512, mode='normal', target_map=pred_normals)
+        pdb.set_trace()
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         t = torch.randint(self.min_step, self.max_step + 1, [1], dtype=torch.long, device=self.device)
@@ -208,7 +211,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('prompt', type=str)
     parser.add_argument('--negative', default='', type=str)
-    parser.add_argument('--sd_version', type=str, default='2.1', choices=['1.5', '2.0', '2.1'], help="stable diffusion version")
+    parser.add_argument('--sd_version', type=str, default='1.5', choices=['1.5', '2.0', '2.1'], help="stable diffusion version")
     parser.add_argument('--hf_key', type=str, default=None, help="hugging face Stable diffusion model key")
     parser.add_argument('-H', type=int, default=512)
     parser.add_argument('-W', type=int, default=512)
@@ -227,7 +230,3 @@ if __name__ == '__main__':
     # visualize image
     plt.imshow(imgs[0])
     plt.show()
-
-
-
-

@@ -1,5 +1,6 @@
 import os
 import glob
+import pdb
 import tqdm
 import math
 import imageio
@@ -114,6 +115,8 @@ def seed_everything(seed):
     #torch.backends.cudnn.deterministic = True
     #torch.backends.cudnn.benchmark = True
 
+def clamp(x, minimum, maximum):
+    return max(min(x, maximum), minimum)
 
 def torch_vis_2d(x, renormalize=False):
     # x: [3, H, W] or [1, H, W] or [H, W]
@@ -342,6 +345,9 @@ class Trainer(object):
     ### ------------------------------	
 
     def train_step(self, data):
+        guidance = 100 * (1 - self.epoch / self.max_epochs)
+        self.guidance.max_step = int(self.guidance.num_train_timesteps * clamp(
+            1 - self.epoch / self.max_epochs, 0.05, 0.98))
 
         rays_o = data['rays_o'] # [B, N, 3]
         rays_d = data['rays_d'] # [B, N, 3]
@@ -365,9 +371,11 @@ class Trainer(object):
                 ambient_ratio = 0.1
 
         bg_color = torch.rand((B * N, 3), device=rays_o.device) # pixel-wise random
-        outputs = self.model.render(rays_o, rays_d, staged=False, perturb=True, bg_color=bg_color, ambient_ratio=ambient_ratio, shading=shading, force_all_rays=True, **vars(self.opt))
+        outputs = self.model.render(rays_o, rays_d, staged=False, perturb=True, bg_color=bg_color,
+            ambient_ratio=ambient_ratio, shading=shading, force_all_rays=True, **vars(self.opt))
         pred_rgb = outputs['image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous() # [1, 3, H, W]
         pred_depth = outputs['depth'].reshape(B, 1, H, W)
+        pred_normals = outputs['normals'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous()
         
         # torch_vis_2d(pred_rgb[0])
         
@@ -379,7 +387,7 @@ class Trainer(object):
             text_z = self.text_z
         
         # encode pred_rgb to latents
-        loss = self.guidance.train_step(text_z, pred_rgb)
+        loss = self.guidance.train_step(text_z, pred_rgb, pred_depth, pred_normals, guidance_scale=guidance)
 
         # regularizations
         if self.opt.lambda_opacity > 0:
@@ -388,7 +396,8 @@ class Trainer(object):
 
         if self.opt.lambda_entropy > 0:
             alphas = outputs['weights'].clamp(1e-5, 1 - 1e-5)
-            # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
+            # max at 0.37, 0 at 0 or 1
+            # alphas = alphas ** 2 # shifts max to 0.6
             loss_entropy = (- alphas * torch.log2(alphas) - (1 - alphas) * torch.log2(1 - alphas)).mean()
                     
             loss = loss + self.opt.lambda_entropy * loss_entropy
@@ -520,6 +529,7 @@ class Trainer(object):
             self.writer = tensorboardX.SummaryWriter(os.path.join(self.workspace, "run", self.name))
 
         start_t = time.time()
+        self.max_epochs = max_epochs
         
         for epoch in range(self.epoch + 1, max_epochs + 1):
             self.epoch = epoch

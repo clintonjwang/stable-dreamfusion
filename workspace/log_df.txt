@@ -1,0 +1,6 @@
+[INFO] Cmdline: main.py -O
+[INFO] Trainer: df | 2023-02-20_21-42-41 | cuda | fp16 | workspace
+[INFO] #parameters: 12240458
+[INFO] Loading latest checkpoint ...
+[WARN] No checkpoint found, model randomly initialized.
+==> Start Training workspace Epoch 1, lr=0.050000 ...

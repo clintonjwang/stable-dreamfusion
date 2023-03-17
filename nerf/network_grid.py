@@ -87,7 +87,7 @@ class NeRFNetwork(NeRFRenderer):
 
         return sigma, albedo, enc
     
-    def forward(self, x, d, l=None, ratio=1, shading='albedo'):
+    def forward(self, x, d, l=None, ratio=1, shading='albedo', return_normals=True):
         # x: [N, 3], in [-bound, bound]
         # d: [N, 3], view direction, nomalized in [-1, 1]
         # l: [3], plane light direction, nomalized in [-1, 1]
@@ -96,7 +96,12 @@ class NeRFNetwork(NeRFRenderer):
         sigma, albedo, enc = self.common_forward(x)
 
         if shading == 'albedo':
-            normal = None
+            if return_normals:
+                normal = self.normal_net(enc)
+                normal = safe_normalize(normal)
+                normal = torch.nan_to_num(normal)
+            else:
+                normal = None
             color = albedo
         
         else: # lambertian shading

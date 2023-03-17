@@ -1,5 +1,6 @@
 import os
 import math
+import pdb
 import cv2
 import trimesh
 import numpy as np
@@ -465,6 +466,7 @@ class NeRFRenderer(nn.Module):
         results['depth'] = depth
         results['weights'] = weights
         results['weights_sum'] = weights_sum
+        results['normals'] = normals
 
         return results
 
@@ -500,7 +502,9 @@ class NeRFRenderer(nn.Module):
             xyzs, dirs, ts, rays = raymarching.march_rays_train(rays_o, rays_d, self.bound, self.density_bitfield, self.cascade, self.grid_size, nears, fars, perturb, dt_gamma, max_steps)
             # plot_pointcloud(xyzs.reshape(-1, 3).detach().cpu().numpy())
             sigmas, rgbs, normals = self(xyzs, dirs, light_d, ratio=ambient_ratio, shading=shading)
-            weights, weights_sum, depth, image = raymarching.composite_rays_train(sigmas, rgbs, ts, rays, T_thresh)
+            weights, weights_sum, depth, image = raymarching.composite_rays_train(
+                sigmas, rgbs, ts, rays, T_thresh, normals)
+            image, rendered_normals = image[..., :3], image[..., 3:]
             
             # normals related regularizations
             if normals is not None:
@@ -565,6 +569,7 @@ class NeRFRenderer(nn.Module):
         results['image'] = image
         results['depth'] = depth
         results['weights_sum'] = weights_sum
+        results['normals'] = rendered_normals
         
         return results
 
@@ -642,6 +647,7 @@ class NeRFRenderer(nn.Module):
             depth = torch.empty((B, N), device=device)
             image = torch.empty((B, N, 3), device=device)
             weights_sum = torch.empty((B, N), device=device)
+            normals = torch.empty((B, N, 3), device=device)
 
             for b in range(B):
                 head = 0
@@ -651,12 +657,14 @@ class NeRFRenderer(nn.Module):
                     depth[b:b+1, head:tail] = results_['depth']
                     weights_sum[b:b+1, head:tail] = results_['weights_sum']
                     image[b:b+1, head:tail] = results_['image']
+                    normals[b:b+1, head:tail] = results_['normals']
                     head += max_ray_batch
             
             results = {}
             results['depth'] = depth
             results['image'] = image
             results['weights_sum'] = weights_sum
+            results['normals'] = normals
 
         else:
             results = _run(rays_o, rays_d, **kwargs)
