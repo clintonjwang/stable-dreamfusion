@@ -7,16 +7,16 @@ from nerf.utils import *
 
 from nerf.gui import NeRFGUI
 import os
+# os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 sys.path.extend(os.path.expandvars('$NFS/code/stable-dreamfusion/src/controlnet'))
 sys.path.extend(os.path.expandvars('$NFS/code/stable-dreamfusion/src/controlnet/ldm'))
 
 # torch.autograd.set_detect_anomaly(True)
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser()
-    parser.add_argument('--text', default='a hamburger', help="text prompt")
-    parser.add_argument('--negative', default='', type=str, help="negative text prompt")
+    parser.add_argument('--text', default='a DSLR photo of a hamburger, photorealistic, ultra HD', help="text prompt")
+    parser.add_argument('--negative', default='cartoon, saturated colors', type=str, help="negative text prompt")
     parser.add_argument('-O', action='store_true', help="equals --fp16 --cuda_ray --dir_text")
     parser.add_argument('-O2', action='store_true', help="equals --backbone vanilla --dir_text")
     parser.add_argument('--test', action='store_true', help="test mode")

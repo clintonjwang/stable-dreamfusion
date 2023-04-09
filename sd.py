@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.cuda.amp import custom_bwd, custom_fwd 
-from . import cnet
+import controlnet as cnet
 
 class SpecifyGradient(torch.autograd.Function):
     @staticmethod
